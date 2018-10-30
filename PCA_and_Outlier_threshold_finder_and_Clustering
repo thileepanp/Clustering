@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 25 12:06:29 2018
+
+PCA and OUTLIER removal functions
+
+The TrainPCA function will apply PCA and identify the right threshold for removing
+outliers
+
+The RemoveOutliers function uses any monthly/yearly/respresentative dataset, 
+the final PCA object trained from the TrainPCA function, and also the threshold
+values from the TrainPCA function to transform the data to PCA domain and apply
+threshold values and remove outliers. 
+
+
+@author: thileepan
+"""
+
+import pandas as pd
+from sklearn.decomposition import PCA
+from soundapi import SoundAPI
+import numpy as np
+from plotCluster import plotClusters
+import hdbscan
+import matplotlib.pyplot as plt
+import os
+import glob
+from natsort import natsorted
+
+
+os.chdir('/home/thileepan/Projects/Clustering/features')
+
+training_data = pd.read_csv('training_data.csv', index_col=0)
+
+def TrainPCA(training_data):
+    pca1 = PCA(n_components=2)
+    pca1.fit(training_data)
+    t1 = pca1.transform(training_data)
+    #plt.scatter(t1[:,0], t1[:,1])
+    #plt.figure()
+    #plt.hist(t1[:,0], bins=1000) #initial obs t1[:,0] < 3000
+    #plt.figure()
+    #plt.hist(t1[:,1], bins=1000) #initial obs -4400 < t1[:,1] <8730
+    mask1 = plt.mlab.find((t1[:,0]<3000) & (t1[:,1]<8730))
+    second_training_set = training_data.iloc[mask1]
+    
+    pca_final = PCA(n_components=2)
+    pca_final.fit(second_training_set)
+    t2 = pca_final.transform(second_training_set)
+    plt.scatter(t2[:,0], t2[:,1], s=0.01)
+    plt.figure()
+    plt.hist(t2[:,0], bins=1000)
+    plt.figure()
+    plt.hist(t2[:,1], bins=1000)
+    #mask2 = plt.mlab.find((t2[:,0]<8700) & (t2[:,1]<4000))
+    threshold1 = 8700
+    threshold2 = 4000
+    return (pca_final, threshold1, threshold2)
+
+def RemoveOutliers(data, pca, th1, th2):
+    transformed_data = pca.transform(data)
+    #mask = plt.mlab.find(transformed_data[(transformed_data[:,0]<th1) & (transformed_data[:,1]<th2)])
+    mask = plt.mlab.find([(transformed_data[:,0]<th1) & (transformed_data[:,1]<th2)])
+    IL = transformed_data[mask]
+    return (IL, mask)
+
+pattern_list_2016 = ['Librosa_2016_{}_*'.format(num) for num in range(4,13)]
+pattern_list_2017 = ['Librosa_2017_{}_*'.format(num) for num in range(1,6)]
+
+def ReadMonthlyData(pattern):
+    file_list = []
+    for file in glob.glob(pattern):
+         file_list.append(file)
+         file_list = natsorted(file_list)
+    data = pd.DataFrame()
+    for file in file_list:
+        temp_data = pd.read_hdf(file)
+        data = data.append(temp_data)
+    return data
+
