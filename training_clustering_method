@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 16 18:56:13 2018
+
+@author: thileepan
+"""
+
+
+import pandas as pd
+from sklearn.decomposition import PCA
+from soundapi import SoundAPI
+import numpy as np
+from plotCluster import plotClusters
+from hdbscan import HDBSCAN
+import matplotlib.pyplot as plt
+import os
+import glob
+from natsort import natsorted
+import hdbscan
+import seaborn as sns
+
+def TrainPCA(training_data):
+    pca1 = PCA(n_components=2)
+    pca1.fit(training_data)
+    t1 = pca1.transform(training_data)
+    #plt.scatter(t1[:,0], t1[:,1])
+    #plt.figure()
+    #plt.hist(t1[:,0], bins=1000) #initial obs t1[:,0] < 3000
+    #plt.figure()
+    #plt.hist(t1[:,1], bins=1000) #initial obs -4400 < t1[:,1] <8730
+    mask1 = plt.mlab.find((t1[:,0]<3000) & (t1[:,1]<8730))
+    second_training_set = training_data.iloc[mask1]
+    
+    pca_final = PCA(n_components=2)
+    pca_final.fit(second_training_set)
+    t2 = pca_final.transform(second_training_set)
+    #plt.scatter(t2[:,0], t2[:,1], s=0.01)
+    plt.scatter(t2[:,0], t2[:,1], s=0.1)
+    plt.figure()
+    plt.hist(t2[:,0], bins=1000)
+    plt.figure()
+    plt.hist(t2[:,1], bins=1000)
+    threshold1 = 8700
+    threshold2 = 4000
+    return (pca_final, threshold1, threshold2)
+
+def RemoveOutliers(data, pca, th1, th2):
+    transformed_data = pca.transform(data)
+    #mask = plt.mlab.find(transformed_data[(transformed_data[:,0]<th1) & (transformed_data[:,1]<th2)])
+    mask = plt.mlab.find([(transformed_data[:,0]<th1) & (transformed_data[:,1]<th2)])
+    IL = transformed_data[mask]
+    return (IL, mask)
+
+def Clustering(IL, mask, clustering_training_data):
+    #ri_test = np.random.choice(range(len(IL)),size=np.int(IL.shape[0]/10))
+    clusterer = HDBSCAN(min_cluster_size=1000, gen_min_span_tree=True)
+    #hdb = clusterer.fit(clustering_training_data)
+    IL.ix[mask,'hdbscan_cluster'] = clusterer.fit_predict(IL)
+    
+# Function to train cluster object and return the object
+def TrainCluster(x):  
+    clusterer = HDBSCAN(min_cluster_size=100, gen_min_span_tree=True, prediction_data=True) # creating a clustering object
+    hdb = clusterer.fit(x) #Fitting cluster object on training data
+    hdb.prediction_data
+    del(x)
+    return hdb
+
+#os.chdir('/media/thileepan/USB DISK/Results')
+
+os.chdir('/home/thileepan/Projects/Clustering/features') #Linux
+os.chdir('C:/Users/tpaulraj/Projects/Clustering/features/') #Windows
+
+#data = pd.read_csv('features_and_clusters_data', index_col=0, parse_dates=True)
+#training_data = pd.read_csv('training_data.csv', index_col=0) # Reading training data
+#training_data = training_data.sample(frac=0.50)
+#sample_pca_data = sample_data.iloc[:,-4:-2]
+
+training_data = pd.read_csv('Cluster_training_data', index_col=0, parse_dates=True)
+pca_final, th1, th2 = TrainPCA(training_data)
+IL_training_data, training_data_mask = RemoveOutliers(training_data, pca_final, th1, th2)
+hdb = TrainCluster(IL_training_data) #obtaining trainined cluster object
+labels, strengths = hdbscan.approximate_predict(hdb, IL_training_data)
+
+IL_clustering_training_data = pd.DataFrame(IL_training_data)
+IL_clustering_training_data['labels'] = labels
+IL_clustering_training_data['strengths'] = strengths
+IL_clustering_training_data.columns = ['pca1', 'pca2', 'labels', 'strengths']
+valid_training_data = training_data.iloc[training_data_mask]
+valid_training_data.reset_index(inplace=True)
+
+features_and_cluster_information_data = pd.concat([valid_training_data, IL_clustering_training_data], axis=1)
